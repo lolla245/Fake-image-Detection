@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fake Image Detection</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #11111a;
+      --border: #1e1e2e;
+      --accent-real: #00e5a0;
+      --accent-fake: #ff3c6e;
+      --accent-neutral: #7c6af7;
+      --text: #e8e6f0;
+      --muted: #5a5870;
+      --card: #14141f;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+    }
+
+    /* Animated grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Glow orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.25;
+    }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent-neutral); top: -200px; left: -150px; }
+    .orb-2 { width: 400px; height: 400px; background: var(--accent-fake); bottom: -180px; right: -100px; }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 680px;
+      padding: 40px 24px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(124,106,247,0.12);
+      border: 1px solid rgba(124,106,247,0.3);
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent-neutral);
+      margin-bottom: 20px;
+    }
+
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent-neutral);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.4rem, 6vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    h1 span {
+      background: linear-gradient(135deg, var(--accent-neutral), var(--accent-fake));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    /* Upload card */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent-neutral);
+      background: rgba(124,106,247,0.05);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      width: 56px; height: 56px;
+      margin: 0 auto 16px;
+      background: rgba(124,106,247,0.1);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.3s ease;
+    }
+
+    .upload-zone:hover .upload-icon { transform: translateY(-4px); }
+
+    .upload-icon svg { width: 26px; height: 26px; stroke: var(--accent-neutral); }
+
+    .upload-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .upload-hint {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* Preview */
+    #preview-wrap {
+      display: none;
+      margin-top: 20px;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      max-height: 300px;
+    }
+
+    #preview-img {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .preview-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(10,10,15,0.6), transparent);
+    }
+
+    #file-name {
+      display: none;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+
+    /* Submit button */
+    .btn {
+      width: 100%;
+      margin-top: 24px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent-neutral), #5b4fe0);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0);
+      transition: background 0.2s;
+    }
+
+    .btn:hover::after { background: rgba(255,255,255,0.08); }
+    .btn:active { transform: scale(0.98); }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      display: none;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result card */
+    .result-card {
+      border-radius: 20px;
+      padding: 28px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-real {
+      background: rgba(0,229,160,0.06);
+      border: 1px solid rgba(0,229,160,0.25);
+    }
+
+    .result-fake {
+      background: rgba(255,60,110,0.06);
+      border: 1px solid rgba(255,60,110,0.25);
+    }
+
+    .result-icon {
+      width: 56px; height: 56px;
+      border-radius: 14px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+    }
+
+    .result-real .result-icon { background: rgba(0,229,160,0.12); }
+    .result-fake .result-icon { background: rgba(255,60,110,0.12); }
+
+    .result-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .result-value {
+      font-family: 'Syne', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .result-real .result-value { color: var(--accent-real); }
+    .result-fake .result-value { color: var(--accent-fake); }
+
+    /* Scan lines animation on result */
+    .result-card::before {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: currentColor;
+      opacity: 0.15;
+      animation: scan 2.5s ease-in-out infinite;
+    }
+
+    @keyframes scan {
+      0% { top: 0; }
+      100% { top: 100%; }
+    }
+
+    /* Uploaded image display */
+    .analyzed-img-wrap {
+      margin-bottom: 24px;
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .analyzed-img-wrap img {
+      width: 100%;
+      max-height: 320px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .analyzed-label {
+      position: absolute;
+      top: 12px; left: 12px;
+      background: rgba(10,10,15,0.75);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    footer {
+      margin-top: 36px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* Scanline texture overlay */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="container">
+
+  <header>
+    <div class="badge">
+      <span class="badge-dot"></span>
+      AI Forensics
+    </div>
+    <h1>Deep<span>Scan</span></h1>
+    <p class="subtitle">// Upload an image — the model will determine if it's real or AI-generated</p>
+  </header>
+
+  {% if prediction %}
+  <!-- Result Section -->
+  <div class="card">
+    {% if image_path %}
+    <div class="analyzed-img-wrap">
+      <img src="/{{ image_path }}" alt="Analyzed image"/>
+      <span class="analyzed-label">Analyzed</span>
+    </div>
+    {% endif %}
+
+    <div class="result-card {% if 'FAKE' in prediction %}result-fake{% else %}result-real{% endif %}" style="position:relative;">
+      <div class="result-icon">
+        {% if 'FAKE' in prediction %}{% else %}{% endif %}
+      </div>
+      <div>
+        <div class="result-label">Detection Result</div>
+        <div class="result-value">{{ prediction }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Upload Form -->
+  <div class="card">
+    <form id="upload-form" action="/predict" method="POST" enctype="multipart/form-data">
+      <div class="upload-zone" id="drop-zone">
+        <input type="file" name="image" id="file-input" accept="image/*" required />
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="upload-label">Drop image here</div>
+        <div class="upload-hint">PNG · JPG · WEBP · up to 10MB</div>
+      </div>
+
+      <div id="preview-wrap">
+        <img id="preview-img" src="" alt="Preview"/>
+        <div class="preview-overlay"></div>
+      </div>
+      <div id="file-name"></div>
+
+      <button class="btn" type="submit" id="submit-btn" disabled>
+        <span id="btn-text">SELECT AN IMAGE FIRST</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+    </form>
+  </div>
+
+  <footer>DeepScan v1.0 &nbsp;·&nbsp; Powered by TensorFlow &amp; Flask</footer>
+</div>
+
+<script>
+  const input = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+  const previewWrap = document.getElementById('preview-wrap');
+  const previewImg = document.getElementById('preview-img');
+  const fileNameEl = document.getElementById('file-name');
+  const submitBtn = document.getElementById('submit-btn');
+  const btnText = document.getElementById('btn-text');
+  const spinner = document.getElementById('spinner');
+  const form = document.getElementById('upload-form');
+
+  input.addEventListener('change', handleFile);
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) {
+      input.files = e.dataTransfer.files;
+      handleFile();
+    }
+  });
+
+  function handleFile() {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      previewWrap.style.display = 'block';
+      fileNameEl.style.display = 'block';
+      fileNameEl.textContent = `// ${file.name} · ${(file.size / 1024).toFixed(1)}KB`;
+      submitBtn.disabled = false;
+      btnText.textContent = 'ANALYZE IMAGE';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  form.addEventListener('submit', () => {
+    submitBtn.disabled = true;
+    btnText.style.display = 'none';
+    spinner.style.display = 'block';
+  });
+</script>
+</body>
+</html>
